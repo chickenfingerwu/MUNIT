@@ -3,7 +3,7 @@ Copyright (C) 2017 NVIDIA Corporation.  All rights reserved.
 Licensed under the CC BY-NC-SA 4.0 license (https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode).
 """
 from networks import AdaINGen, MsImageDis, VAEGen
-from utils import weights_init, get_model_list, vgg_preprocess, load_vgg16, get_scheduler
+from utils import weights_init, get_model_list, vgg_preprocess, get_scheduler
 from torch.autograd import Variable
 import torch
 import torch.nn as nn
@@ -42,13 +42,6 @@ class MUNIT_Trainer(nn.Module):
         self.apply(weights_init(hyperparameters['init']))
         self.dis_a.apply(weights_init('gaussian'))
         self.dis_b.apply(weights_init('gaussian'))
-
-        # Load VGG model if needed
-        if 'vgg_w' in hyperparameters.keys() and hyperparameters['vgg_w'] > 0:
-            self.vgg = load_vgg16(hyperparameters['vgg_model_path'] + '/models')
-            self.vgg.eval()
-            for param in self.vgg.parameters():
-                param.requires_grad = False
 
     def recon_criterion(self, input, target):
         return torch.mean(torch.abs(input - target))
@@ -226,13 +219,6 @@ class UNIT_Trainer(nn.Module):
         self.apply(weights_init(hyperparameters['init']))
         self.dis_a.apply(weights_init('gaussian'))
         self.dis_b.apply(weights_init('gaussian'))
-
-        # Load VGG model if needed
-        if 'vgg_w' in hyperparameters.keys() and hyperparameters['vgg_w'] > 0:
-            self.vgg = load_vgg16(hyperparameters['vgg_model_path'] + '/models')
-            self.vgg.eval()
-            for param in self.vgg.parameters():
-                param.requires_grad = False
 
     def recon_criterion(self, input, target):
         return torch.mean(torch.abs(input - target))
