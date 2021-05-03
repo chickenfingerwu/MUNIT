@@ -84,6 +84,7 @@ while True:
             with torch.no_grad():
                 image_outputs = trainer.sample(train_display_images_a, train_display_images_b)
             write_2images(image_outputs, display_size, image_directory, 'train_current')
+            write_2images(image_outputs, display_size, image_directory, 'train_%s' % (iterations + 1))
 
         # Save network weights
         if (iterations + 1) % config['snapshot_save_iter'] == 0:
