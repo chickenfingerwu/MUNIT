@@ -15,6 +15,74 @@ except ImportError: # will be 3.x series
 # Discriminator
 ##################################################################################
 
+class DilatedDiscriminator(nn.Module):
+    def __init__(self, input_nc, NF=64):
+        super(DilatedDiscriminator, self).__init__()
+        self.NF = NF
+        #l
+        self.l = nn.Conv2d(input_nc, self.NF * 2, 4, stride=2)
+        self.reluL = nn.ReLU(True)
+        #relu1
+        self.relu1 = nn.Conv2d(self.NF * 2, self.NF * 4, 4, stride=2)
+        self.instancenorm1 = nn.InstanceNorm2d(self.NF * 4)
+        #relu2
+        self.relu2 = nn.Conv2d(self.NF * 4, self.NF * 8, 4, stride=2)
+        self.instancenorm2 = nn.InstanceNorm2d(self.NF * 8)
+        #relu3
+        self.relu3 = nn.Conv2d(self.NF * 8, self.NF * 8, 3, stride=1)
+        self.instancenorm3 = nn.InstanceNorm2d(self.NF * 8)
+        #dilated1
+        self.dilated1 = nn.Conv2d(self.NF * 8, self.NF * 8, 3, dilation=2, bias=False)
+        self.instancenormd1 = nn.InstanceNorm2d(self.NF * 8)
+        self.relud1 = nn.ReLU(True)
+        # dilated2
+        self.dilated2 = nn.Conv2d(self.NF * 8, self.NF * 8, 3, dilation=4, bias=False)
+        self.instancenormd2 = nn.InstanceNorm2d(self.NF * 8)
+        self.relud2 = nn.ReLU(True)
+        # dilated3
+        self.dilated3 = nn.Conv2d(self.NF * 8, self.NF * 8, 3, dilation=8, bias=False)
+        self.instancenormd3 = nn.InstanceNorm2d(self.NF * 8)
+        self.relud3 = nn.ReLU(True)
+
+        #skip
+        self.skip = nn.Identity()
+
+        #clean
+        self.clean = nn.Conv2d(self.NF * 16, self.NF * 8, 3, stride=1)
+        self.inclean = nn.InstanceNorm2d(self.NF * 8)
+
+        #lsgan
+        self.lsgan = nn.Conv2d(self.NF * 8, 1, 4, stride=1, bias=False)
+        self.nl = nn.Identity()
+
+    def forward(self, input):
+        l = self.l(input)
+        reluL = self.reluL(l)
+        relu1 = self.relu1(reluL)
+        relu1 = self.instancenorm1(relu1)
+        relu2 = self.relu2(relu1)
+        relu2 = self.instancenorm2(relu2)
+        relu3 = self.relu3(relu2)
+        relu3 = self.instancenorm3(relu3)
+        skip_block = relu3
+        atrous = F.pad(relu3, (2, 2, 2, 2), mode='reflect')
+        atrous = self.dilated1(atrous)
+        atrous = self.instancenormd1(atrous)
+        atrous = self.relud1(atrous)
+        atrous2 = F.pad(atrous, (4, 4, 4, 4), mode='reflect')
+        atrous2 = self.dilated2(atrous2)
+        atrous2 = self.instancenormd2(atrous2)
+        atrous2 = self.relud2(atrous2)
+        atrous3 = F.pad(atrous2, (8, 8, 8, 8), mode='reflect')
+        atrous3 = self.dilated3(atrous3)
+        atrous3 = self.instancenormd3(atrous3)
+        atrous3 = self.relud3(atrous3)
+        merge = torch.cat([atrous3, skip_block], dim=1)
+        clean = self.clean(merge)
+
+        lsgan = self.lsgan(clean)
+        return self.nl(lsgan), [relu1, relu2, relu3, atrous, atrous2, atrous3, clean]
+
 class MsImageDis(nn.Module):
     # Multi-scale discriminator architecture
     def __init__(self, input_dim, params):
