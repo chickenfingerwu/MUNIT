@@ -378,6 +378,9 @@ class Decoder(nn.Module):
         dim //= 2
         self.model += [ResBlocks(n_res, dim, res_norm, activ, pad_type=pad_type)]
         # use reflection padding in the last conv layer
+        self.model += [nn.Upsample(scale_factor=2),
+                       Conv2dBlock(dim, dim // 2, 5, 1, 2, norm='ln', activation=activ, pad_type=pad_type)]
+        dim //= 2
         self.model += [Conv2dBlock(dim, output_dim, 7, 1, 3, norm='none', activation='tanh', pad_type=pad_type)]
         self.model = nn.Sequential(*self.model)
 
