@@ -378,14 +378,14 @@ class Decoder(nn.Module):
         self.upsample1 = nn.Sequential(*[nn.Upsample(scale_factor=2),
                         Conv2dBlock(dim, dim // 2, 5, 1, 2, norm='ln', activation=activ, pad_type=pad_type)])
         dim //= 2
-        self.res2 += ResBlocks(n_res, dim, res_norm, activ, pad_type=pad_type)
+        self.res2 = ResBlocks(n_res, dim * 2, res_norm, activ, pad_type=pad_type)
         self.upsample2 = nn.Sequential(*[nn.Upsample(scale_factor=2),
-                        Conv2dBlock(dim, dim // 2, 5, 1, 2, norm='ln', activation=activ, pad_type=pad_type)])
+                        Conv2dBlock(dim * 2, dim // 2, 5, 1, 2, norm='ln', activation=activ, pad_type=pad_type)])
         dim //= 2
-        self.res3 = ResBlocks(n_res, dim, res_norm, activ, pad_type=pad_type)
+        self.res3 = ResBlocks(n_res, dim * 2, res_norm, activ, pad_type=pad_type)
         # use reflection padding in the last conv layer
         self.upsample3 = nn.Sequential(*[nn.Upsample(scale_factor=2),
-                       Conv2dBlock(dim, dim // 2, 5, 1, 2, norm='ln', activation=activ, pad_type=pad_type)])
+                       Conv2dBlock(dim * 2, dim // 2, 5, 1, 2, norm='ln', activation=activ, pad_type=pad_type)])
         dim //= 2
         self.conv1 = Conv2dBlock(dim, output_dim, 7, 1, 3, norm='none', activation='tanh', pad_type=pad_type)
 
@@ -393,11 +393,11 @@ class Decoder(nn.Module):
         content, res_group = x
         output = self.res1(content)
         output = self.upsample1(output)
-        output = self.res2(output)
-        output = torch.cat([output, res_group[0]], 1)
-        output = self.upsample2(output)
-        output = self.res3(output)
         output = torch.cat([output, res_group[1]], 1)
+        output = self.res2(output)
+        output = self.upsample2(output)
+        output = torch.cat([output, res_group[0]], 1)
+        output = self.res3(output)
         output = self.upsample3(output)
         output = self.conv1(output)
         return output

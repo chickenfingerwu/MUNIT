@@ -78,6 +78,10 @@ class MUNIT_Trainer(nn.Module):
         x_aba = self.gen_a.decode(c_a_recon, s_a_prime) if hyperparameters['recon_x_cyc_w'] > 0 else None
         x_bab = self.gen_b.decode(c_b_recon, s_b_prime) if hyperparameters['recon_x_cyc_w'] > 0 else None
 
+        c_a, _ = c_a
+        c_b, _ = c_b
+        c_a_recon, _ = c_a_recon
+        c_b_recon, _ = c_b_recon
         # reconstruction loss
         self.loss_gen_recon_x_a = self.recon_criterion(x_a_recon, x_a)
         self.loss_gen_recon_x_b = self.recon_criterion(x_b_recon, x_b)
