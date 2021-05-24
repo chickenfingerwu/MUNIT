@@ -341,51 +341,66 @@ class StyleEncoder(nn.Module):
 class ContentEncoder(nn.Module):
     def __init__(self, n_downsample, n_res, input_dim, dim, norm, activ, pad_type):
         super(ContentEncoder, self).__init__()
-        self.model = []
-        self.model += [Conv2dBlock(input_dim, dim, 7, 1, 3, norm=norm, activation=activ, pad_type=pad_type)]
+        self.conv1 = Conv2dBlock(input_dim, dim, 7, 1, 3, norm=norm, activation=activ, pad_type=pad_type)
         # downsampling blocks
-        self.model += [Conv2dBlock(dim, 2 * dim, 4, 2, 1, norm=norm, activation=activ, pad_type=pad_type)]
+        self.conv2 = Conv2dBlock(dim, 2 * dim, 4, 2, 1, norm=norm, activation=activ, pad_type=pad_type)
         dim *= 2
-        self.model += [ResBlocks(n_res, dim, norm=norm, activation=activ, pad_type=pad_type)]
-        self.model += [Conv2dBlock(dim, 2 * dim, 4, 2, 1, norm=norm, activation=activ, pad_type=pad_type)]
+        self.res1 = ResBlocks(n_res, dim, norm=norm, activation=activ, pad_type=pad_type)
+        self.conv3 = Conv2dBlock(dim, 2 * dim, 4, 2, 1, norm=norm, activation=activ, pad_type=pad_type)
         dim *= 2
-        self.model += [ResBlocks(n_res, dim, norm=norm, activation=activ, pad_type=pad_type)]
-        self.model += [Conv2dBlock(dim, 2 * dim, 4, 2, 1, norm=norm, activation=activ, pad_type=pad_type)]
+        self.res2 = ResBlocks(n_res, dim, norm=norm, activation=activ, pad_type=pad_type)
+        self.conv4 = Conv2dBlock(dim, 2 * dim, 4, 2, 1, norm=norm, activation=activ, pad_type=pad_type)
         dim *= 2
         # residual blocks
-        # residual blocks
-        self.model += [ResBlocks(n_res, dim, norm=norm, activation=activ, pad_type=pad_type)]
-        self.model = nn.Sequential(*self.model)
+        self.res3 = ResBlocks(n_res, dim, norm=norm, activation=activ, pad_type=pad_type)
         self.output_dim = dim
 
     def forward(self, x):
-        return self.model(x)
+        res_group = []
+        output = self.conv1(x)
+        output = self.conv2(output)
+        output = self.res1(output)
+        res_group.append(output)
+        output = self.conv3(output)
+        output = self.res2(output)
+        res_group.append(output)
+        output = self.conv4(output)
+        output = self.res3(output)
+        return output, res_group
 
 class Decoder(nn.Module):
     def __init__(self, n_upsample, n_res, dim, output_dim, res_norm='adain', activ='relu', pad_type='zero'):
         super(Decoder, self).__init__()
 
-        self.model = []
         # AdaIN residual blocks
-        self.model += [ResBlocks(n_res, dim, res_norm, activ, pad_type=pad_type)]
+        self.res1 = ResBlocks(n_res, dim, res_norm, activ, pad_type=pad_type)
         # upsampling blocks
-        self.model += [nn.Upsample(scale_factor=2),
-                        Conv2dBlock(dim, dim // 2, 5, 1, 2, norm='ln', activation=activ, pad_type=pad_type)]
+        self.upsample1 = nn.Sequential(*[nn.Upsample(scale_factor=2),
+                        Conv2dBlock(dim, dim // 2, 5, 1, 2, norm='ln', activation=activ, pad_type=pad_type)])
         dim //= 2
-        self.model += [ResBlocks(n_res, dim, res_norm, activ, pad_type=pad_type)]
-        self.model += [nn.Upsample(scale_factor=2),
-                        Conv2dBlock(dim, dim // 2, 5, 1, 2, norm='ln', activation=activ, pad_type=pad_type)]
+        self.res2 += ResBlocks(n_res, dim, res_norm, activ, pad_type=pad_type)
+        self.upsample2 = nn.Sequential(*[nn.Upsample(scale_factor=2),
+                        Conv2dBlock(dim, dim // 2, 5, 1, 2, norm='ln', activation=activ, pad_type=pad_type)])
         dim //= 2
-        self.model += [ResBlocks(n_res, dim, res_norm, activ, pad_type=pad_type)]
+        self.res3 = ResBlocks(n_res, dim, res_norm, activ, pad_type=pad_type)
         # use reflection padding in the last conv layer
-        self.model += [nn.Upsample(scale_factor=2),
-                       Conv2dBlock(dim, dim // 2, 5, 1, 2, norm='ln', activation=activ, pad_type=pad_type)]
+        self.upsample3 = nn.Sequential(*[nn.Upsample(scale_factor=2),
+                       Conv2dBlock(dim, dim // 2, 5, 1, 2, norm='ln', activation=activ, pad_type=pad_type)])
         dim //= 2
-        self.model += [Conv2dBlock(dim, output_dim, 7, 1, 3, norm='none', activation='tanh', pad_type=pad_type)]
-        self.model = nn.Sequential(*self.model)
+        self.conv1 = Conv2dBlock(dim, output_dim, 7, 1, 3, norm='none', activation='tanh', pad_type=pad_type)
 
     def forward(self, x):
-        return self.model(x)
+        content, res_group = x
+        output = self.res1(content)
+        output = self.upsample1(output)
+        output = self.res2(output)
+        output = torch.cat([output, res_group[0]], 1)
+        output = self.upsample2(output)
+        output = self.res3(output)
+        output = torch.cat([output, res_group[1]], 1)
+        output = self.upsample3(output)
+        output = self.conv1(output)
+        return output
 
 ##################################################################################
 # Sequential Models
