@@ -21,7 +21,7 @@ class MUNIT_Trainer(nn.Module):
         self.instancenorm = nn.InstanceNorm2d(512, affine=False)
         self.style_dim = hyperparameters['gen']['style_dim']
         self.criterionGAN = GANLoss(hyperparameters['dis']['gan_type']).cuda()
-        self.featureLoss = torch.nn.L1Loss()
+        self.featureLoss = nn.MSELoss(reduction='mean')
         # fix the noise used in sampling
         display_size = int(hyperparameters['display_size'])
         self.s_a = torch.randn(display_size, self.style_dim, 1, 1).cuda()
