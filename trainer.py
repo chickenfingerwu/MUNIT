@@ -21,6 +21,7 @@ class MUNIT_Trainer(nn.Module):
         self.instancenorm = nn.InstanceNorm2d(512, affine=False)
         self.style_dim = hyperparameters['gen']['style_dim']
         self.criterionGAN = GANLoss(hyperparameters['dis']['gan_type']).cuda()
+        self.featureLoss = nn.MSELoss(reduction='mean')
         # fix the noise used in sampling
         display_size = int(hyperparameters['display_size'])
         self.s_a = torch.randn(display_size, self.style_dim, 1, 1).cuda()
@@ -91,7 +92,22 @@ class MUNIT_Trainer(nn.Module):
         self.loss_gen_adv_a = self.criterionGAN(prediction_a, True)
         prediction_b, _ = self.dis_b(x_ab)
         self.loss_gen_adv_b = self.criterionGAN(prediction_b, True)
-
+        # Feature match loss
+        _, feature_real_A = self.dis_a(x_a)
+        _, feature_fake_A = self.dis_a(x_ba)
+        _, feature_real_B = self.dis_b(x_b)
+        _, feature_fake_B = self.dis_b(x_ab)
+        losses_A = []
+        for real, fake in zip(feature_real_A, feature_fake_A):
+            loss = self.featureLoss(real, fake)
+            losses_A.append(loss)
+        self.loss_feature_match_A = torch.mean(torch.tensor(losses_A))
+        losses_B = []
+        for real, fake in zip(feature_real_B, feature_fake_B):
+            loss = self.featureLoss(real, fake)
+            losses_B.append(loss)
+        self.loss_feature_match_B = torch.mean(torch.tensor(losses_B))
+        self.total_feature_loss = self.loss_feature_match_A + self.loss_feature_match_B
         # domain-invariant perceptual loss
         self.loss_gen_vgg_a = self.compute_vgg_loss(self.vgg, x_ba, x_b) if hyperparameters['vgg_w'] > 0 else 0
         self.loss_gen_vgg_b = self.compute_vgg_loss(self.vgg, x_ab, x_a) if hyperparameters['vgg_w'] > 0 else 0
@@ -107,7 +123,8 @@ class MUNIT_Trainer(nn.Module):
                               hyperparameters['recon_x_cyc_w'] * self.loss_gen_cycrecon_x_a + \
                               hyperparameters['recon_x_cyc_w'] * self.loss_gen_cycrecon_x_b + \
                               hyperparameters['vgg_w'] * self.loss_gen_vgg_a + \
-                              hyperparameters['vgg_w'] * self.loss_gen_vgg_b
+                              hyperparameters['vgg_w'] * self.loss_gen_vgg_b + \
+                              hyperparameters['fm_w'] * self.total_feature_loss
         self.loss_gen_total.backward()
         self.gen_opt.step()
 
