@@ -2,7 +2,7 @@
 Copyright (C) 2017 NVIDIA Corporation.  All rights reserved.
 Licensed under the CC BY-NC-SA 4.0 license (https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode).
 """
-from networks import AdaINGen, DilatedDiscriminator, VAEGen, GANLoss
+from networks import AdaINGen, DilatedDiscriminator, VAEGen, GANLoss, MsImageDis
 from utils import weights_init, get_model_list, vgg_preprocess, get_scheduler
 from torch.autograd import Variable
 import torch
@@ -16,8 +16,8 @@ class MUNIT_Trainer(nn.Module):
         # Initiate the networks
         self.gen_a = AdaINGen(hyperparameters['input_dim_a'], hyperparameters['gen'])  # auto-encoder for domain a
         self.gen_b = AdaINGen(hyperparameters['input_dim_b'], hyperparameters['gen'])  # auto-encoder for domain b
-        self.dis_a = DilatedDiscriminator(hyperparameters['input_dim_a'])  # discriminator for domain a
-        self.dis_b = DilatedDiscriminator(hyperparameters['input_dim_b'])  # discriminator for domain b
+        self.dis_a = MsImageDis(hyperparameters['input_dim_a'], hyperparameters['dis'])  # discriminator for domain a
+        self.dis_b = MsImageDis(hyperparameters['input_dim_b'], hyperparameters['dis'])  # discriminator for domain b
         self.instancenorm = nn.InstanceNorm2d(512, affine=False)
         self.style_dim = hyperparameters['gen']['style_dim']
         self.criterionGAN = GANLoss(hyperparameters['dis']['gan_type']).cuda()
@@ -88,26 +88,12 @@ class MUNIT_Trainer(nn.Module):
         self.loss_gen_cycrecon_x_a = self.recon_criterion(x_aba, x_a) if hyperparameters['recon_x_cyc_w'] > 0 else 0
         self.loss_gen_cycrecon_x_b = self.recon_criterion(x_bab, x_b) if hyperparameters['recon_x_cyc_w'] > 0 else 0
         # GAN loss
-        prediction_a, _ = self.dis_a(x_ba)
-        self.loss_gen_adv_a = self.criterionGAN(prediction_a, True)
-        prediction_b, _ = self.dis_b(x_ab)
-        self.loss_gen_adv_b = self.criterionGAN(prediction_b, True)
-        # Feature match loss
-        _, feature_real_A = self.dis_a(x_a)
-        _, feature_fake_A = self.dis_a(x_ba)
-        _, feature_real_B = self.dis_b(x_b)
-        _, feature_fake_B = self.dis_b(x_ab)
-        losses_A = []
-        for real, fake in zip(feature_real_A, feature_fake_A):
-            loss = self.featureLoss(real, fake)
-            losses_A.append(loss)
-        self.loss_feature_match_A = torch.mean(torch.tensor(losses_A))
-        losses_B = []
-        for real, fake in zip(feature_real_B, feature_fake_B):
-            loss = self.featureLoss(real, fake)
-            losses_B.append(loss)
-        self.loss_feature_match_B = torch.mean(torch.tensor(losses_B))
-        self.total_feature_loss = self.loss_feature_match_A + self.loss_feature_match_B
+        # prediction_a = self.dis_a(x_ba)
+        # self.loss_gen_adv_a = self.criterionGAN(prediction_a, True)
+        # prediction_b = self.dis_b(x_ab)
+        # self.loss_gen_adv_b = self.criterionGAN(prediction_b, True)
+        self.loss_gen_adv_a = self.dis_a.calc_gen_loss(x_ba)
+        self.loss_gen_adv_b = self.dis_b.calc_gen_loss(x_ab)
         # domain-invariant perceptual loss
         self.loss_gen_vgg_a = self.compute_vgg_loss(self.vgg, x_ba, x_b) if hyperparameters['vgg_w'] > 0 else 0
         self.loss_gen_vgg_b = self.compute_vgg_loss(self.vgg, x_ab, x_a) if hyperparameters['vgg_w'] > 0 else 0
@@ -123,8 +109,7 @@ class MUNIT_Trainer(nn.Module):
                               hyperparameters['recon_x_cyc_w'] * self.loss_gen_cycrecon_x_a + \
                               hyperparameters['recon_x_cyc_w'] * self.loss_gen_cycrecon_x_b + \
                               hyperparameters['vgg_w'] * self.loss_gen_vgg_a + \
-                              hyperparameters['vgg_w'] * self.loss_gen_vgg_b + \
-                              hyperparameters['fm_w'] * self.total_feature_loss
+                              hyperparameters['vgg_w'] * self.loss_gen_vgg_b
         self.loss_gen_total.backward()
         self.gen_opt.step()
 
@@ -168,18 +153,21 @@ class MUNIT_Trainer(nn.Module):
         x_ba = self.gen_a.decode(c_b, s_a)
         x_ab = self.gen_b.decode(c_a, s_b)
         # D loss
-        pred_real_a, _ = self.dis_a(x_a)
-        pred_fake_a, _ = self.dis_a(x_ba)
-        self.loss_real_a = self.criterionGAN(pred_real_a, True)
-        self.loss_fake_a = self.criterionGAN(pred_fake_a, False)
-        self.loss_dis_a = 0.5 * (self.loss_real_a + self.loss_fake_a)
+        # pred_real_a = self.dis_a(x_a)
+        # pred_fake_a = self.dis_a(x_ba)
+        # self.loss_real_a = self.criterionGAN(pred_real_a, True)
+        # self.loss_fake_a = self.criterionGAN(pred_fake_a, False)
+        # pred_real_b = self.dis_b(x_b)
+        # pred_fake_b = self.dis_b(x_ab)
+        # self.loss_real_b = self.criterionGAN(pred_real_b, True)
+        # self.loss_fake_b = self.criterionGAN(pred_fake_b, False)
+        # self.loss_dis_b = 0.5 * (self.loss_real_b + self.loss_fake_b)
+        # self.loss_dis_total = hyperparameters['gan_w'] * self.loss_dis_a + hyperparameters['gan_w'] * self.loss_dis_b
 
-        pred_real_b, _ = self.dis_b(x_b)
-        pred_fake_b, _ = self.dis_b(x_ab)
-        self.loss_real_b = self.criterionGAN(pred_real_b, True)
-        self.loss_fake_b = self.criterionGAN(pred_fake_b, False)
-        self.loss_dis_b = 0.5 * (self.loss_real_b + self.loss_fake_b)
+        self.loss_dis_a = self.dis_a.calc_dis_loss(x_ba.detach(), x_a)
+        self.loss_dis_b = self.dis_b.calc_dis_loss(x_ab.detach(), x_b)
         self.loss_dis_total = hyperparameters['gan_w'] * self.loss_dis_a + hyperparameters['gan_w'] * self.loss_dis_b
+
         self.loss_dis_total.backward()
         self.dis_opt.step()
 

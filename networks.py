@@ -150,6 +150,46 @@ class DilatedDiscriminator(nn.Module):
         lsgan = self.lsgan(clean)
         return self.nl(lsgan), [relu1, relu2, relu3, atrous, atrous2, atrous3, clean]
 
+class DilatedDis(nn.Module):
+    def __init__(self, input_dim, params, NF=32):
+        super(DilatedDis, self).__init__()
+        self.input_dim = input_dim
+        self.nf = NF
+        self.n_layer = params['n_layer']
+        self.gan_type = params['gan_type']
+        self.dim = params['dim']
+        self.norm = params['norm']
+        self.activ = params['activ']
+        self.num_scales = params['num_scales']
+        self.pad_type = params['pad_type']
+        self.dil_layer = params['dilated_layer']
+
+        dim = self.nf
+        self.cnn_x = []
+        self.cnn_x += [Conv2dBlock(self.input_dim, dim, 4, 2, 1, norm='none', activation=self.activ, pad_type=self.pad_type)]
+        for i in range(self.n_layer - 1):
+            self.cnn_x += [Conv2dBlock(dim, dim * 2, 4, 2, 1, norm=self.norm, activation=self.activ, pad_type=self.pad_type)]
+            dim *= 2
+        self.cnn_x = nn.Sequential(*self.cnn_x)
+
+        self.dilate_x = []
+        dilation = 2
+        padding = 2
+        for i in range(self.dil_layer - 1):
+            self.dilate_x += [nn.Conv2d(dim, dim, 3, padding=padding, dilation=dilation, bias=False),
+                         nn.InstanceNorm2d(dim),
+                         nn.ReLU(True)]
+            padding *= 2
+            dilation *= 2
+        self.dilate_x = nn.Sequential(*self.dilate_x)
+        self.last_x  = nn.Conv2d(dim * 2, 1, 1, 1, 0)
+
+    def forward(self, x):
+        output1 = self.cnn_x(x)
+        output2 = self.dilate_x(output1)
+        input = torch.cat([output1, output2], 1)
+        return self.last_x(input)
+
 class MsImageDis(nn.Module):
     # Multi-scale discriminator architecture
     def __init__(self, input_dim, params):
@@ -165,7 +205,7 @@ class MsImageDis(nn.Module):
         self.downsample = nn.AvgPool2d(3, stride=2, padding=[1, 1], count_include_pad=False)
         self.cnns = nn.ModuleList()
         for _ in range(self.num_scales):
-            self.cnns.append(self._make_net())
+            self.cnns.append(DilatedDis(input_dim, params))
 
     def _make_net(self):
         dim = self.dim
