@@ -5,7 +5,7 @@
 image_save_iter: 1000        # How often do you want to save output images during training
 image_display_iter: 1000       # How often do you want to display output images during training
 display_size: 16              # How many images do you want to display each time
-snapshot_save_iter: 10000     # How often do you want to save trained models
+snapshot_save_iter: 5000     # How often do you want to save trained models
 log_iter: 10                  # How often do you want to log the training stats
 
 # optimization options
@@ -40,7 +40,7 @@ dis:
   dim: 32                     # number of filters in the bottommost layer
   norm: none                  # normalization layer [none/bn/in/ln]
   activ: lrelu                # activation function [relu/lrelu/prelu/selu/tanh]
-  n_layer: 4                  # number of layers in D
+  n_layer: 3                  # number of layers in D
   dilated_layer: 2            # number of dilated layers in D
   gan_type: lsgan             # GAN loss [lsgan/nsgan]
   num_scales: 3               # number of scales

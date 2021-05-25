@@ -187,8 +187,8 @@ class DilatedDis(nn.Module):
     def forward(self, x):
         output1 = self.cnn_x(x)
         output2 = self.dilate_x(output1)
-        input = torch.cat([output1, output2], 1)
-        return self.last_x(input)
+        output = torch.cat([output1, output2], 1)
+        return self.last_x(output)
 
 class MsImageDis(nn.Module):
     # Multi-scale discriminator architecture
