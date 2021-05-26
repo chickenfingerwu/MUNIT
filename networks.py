@@ -165,30 +165,56 @@ class DilatedDis(nn.Module):
         self.dil_layer = params['dilated_layer']
 
         dim = self.nf
-        self.cnn_x = []
-        self.cnn_x += [Conv2dBlock(self.input_dim, dim, 4, 2, 1, norm='none', activation=self.activ, pad_type=self.pad_type)]
-        for i in range(self.n_layer - 1):
-            self.cnn_x += [Conv2dBlock(dim, dim * 2, 4, 2, 1, norm=self.norm, activation=self.activ, pad_type=self.pad_type)]
-            dim *= 2
-        self.cnn_x = nn.Sequential(*self.cnn_x)
+        # self.cnn_x = []
+        # self.cnn_x += [Conv2dBlock(self.input_dim, dim, 4, 2, 1, norm='none', activation=self.activ, pad_type=self.pad_type)]
+        # for i in range(self.n_layer - 1):
+        #     self.cnn_x += [Conv2dBlock(dim, dim * 2, 4, 2, 1, norm=self.norm, activation=self.activ, pad_type=self.pad_type)]
+        #     dim *= 2
+        # self.cnn_x = nn.Sequential(*self.cnn_x)
+        #
+        # self.dilate_x = []
+        # dilation = 2
+        # padding = 2
+        # for i in range(self.dil_layer - 1):
+        #     self.dilate_x += [nn.Conv2d(dim, dim, 3, padding=padding, dilation=dilation, bias=False),
+        #                  nn.InstanceNorm2d(dim),
+        #                  nn.ReLU(True)]
+        #     padding *= 2
+        #     dilation *= 2
+        # self.dilate_x = nn.Sequential(*self.dilate_x)
+        self.conv1 = Conv2dBlock(self.input_dim, dim, 4, 2, 1, norm='none', activation=self.activ, pad_type=self.pad_type)
+        self.conv2 = Conv2dBlock(self.input_dim, dim, 4, 2, 1, norm='none', activation=self.activ, pad_type=self.pad_type)
+        dim *= 2
+        self.conv3 = Conv2dBlock(self.input_dim, dim, 4, 2, 1, norm='none', activation=self.activ,pad_type=self.pad_type)
+        dim *= 2
+        self.conv4 = Conv2dBlock(self.input_dim, dim, 4, 2, 1, norm='none', activation=self.activ,pad_type=self.pad_type)
+        dim *= 2
 
-        self.dilate_x = []
         dilation = 2
         padding = 2
-        for i in range(self.dil_layer - 1):
-            self.dilate_x += [nn.Conv2d(dim, dim, 3, padding=padding, dilation=dilation, bias=False),
-                         nn.InstanceNorm2d(dim),
-                         nn.ReLU(True)]
-            padding *= 2
-            dilation *= 2
-        self.dilate_x = nn.Sequential(*self.dilate_x)
+        self.dilate1 = nn.Conv2d(dim, dim, 3, padding=padding, dilation=dilation, bias=False)
+        self.in1 = nn.InstanceNorm2d(dim), nn.ReLU(True)
+        padding *= 2
+        dilation *= 2
+        self.dilate2 = nn.Conv2d(dim, dim, 3, padding=padding, dilation=dilation, bias=False)
+        self.in2 = nn.InstanceNorm2d(dim), nn.ReLU(True)
+        padding *= 2
+        dilation *= 2
         self.last_x  = nn.Conv2d(dim * 2, 1, 1, 1, 0)
 
     def forward(self, x):
-        output1 = self.cnn_x(x)
-        output2 = self.dilate_x(output1)
-        output = torch.cat([output1, output2], 1)
-        return self.last_x(output)
+        # output1 = self.cnn_x(x)
+        # output2 = self.dilate_x(output1)
+        # output = torch.cat([output1, output2], 1)
+        conv1 = self.conv1(x)
+        conv2 = self.conv2(conv1)
+        conv3 = self.conv3(conv2)
+        conv4 = self.conv4(conv3)
+        dilate1 = self.dilate1(conv4)
+        in1 = self.in1(dilate1)
+        dilate2 = self.dilate2(in1)
+        in2 = self.in2(dilate2)
+        return self.last_x(in2), [conv1, conv2, conv3, conv4, dilate1, dilate2]
 
 class MsImageDis(nn.Module):
     # Multi-scale discriminator architecture
@@ -202,6 +228,7 @@ class MsImageDis(nn.Module):
         self.num_scales = params['num_scales']
         self.pad_type = params['pad_type']
         self.input_dim = input_dim
+        self.featureLoss = nn.MSELoss(reduction='mean')
         self.downsample = nn.AvgPool2d(3, stride=2, padding=[1, 1], count_include_pad=False)
         self.cnns = nn.ModuleList()
         for _ in range(self.num_scales):
@@ -220,15 +247,18 @@ class MsImageDis(nn.Module):
 
     def forward(self, x):
         outputs = []
+        features = []
         for model in self.cnns:
-            outputs.append(model(x))
+            out, feat = model(x)
+            outputs.append(out)
+            features.append(feat)
             x = self.downsample(x)
-        return outputs
+        return outputs, features
 
     def calc_dis_loss(self, input_fake, input_real):
         # calculate the loss to train D
-        outs0 = self.forward(input_fake)
-        outs1 = self.forward(input_real)
+        outs0, _ = self.forward(input_fake)
+        outs1, _ = self.forward(input_real)
         loss = 0
 
         for it, (out0, out1) in enumerate(zip(outs0, outs1)):
@@ -245,7 +275,7 @@ class MsImageDis(nn.Module):
 
     def calc_gen_loss(self, input_fake):
         # calculate the loss to train G
-        outs0 = self.forward(input_fake)
+        outs0, _ = self.forward(input_fake)
         loss = 0
         for it, (out0) in enumerate(outs0):
             if self.gan_type == 'lsgan':
@@ -256,6 +286,18 @@ class MsImageDis(nn.Module):
             else:
                 assert 0, "Unsupported GAN type: {}".format(self.gan_type)
         return loss
+
+    def calc_fm_loss(self, real_img, fake_img):
+        _, features0 = self.forward(real_img)
+        _, features1 = self.forward(fake_img)
+        fm_loss = 0
+        for feature_real, feature_fake in zip(features0, features1):
+            losses = []
+            for real, fake in zip(feature_real, feature_fake):
+                loss = self.featureLoss(real, fake)
+                losses.append(loss)
+            fm_loss += torch.mean(torch.tensor(losses))
+        return fm_loss
 
 ##################################################################################
 # Generator

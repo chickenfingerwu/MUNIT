@@ -87,11 +87,11 @@ class MUNIT_Trainer(nn.Module):
         self.loss_gen_recon_c_b = self.recon_criterion(c_b_recon, c_b)
         self.loss_gen_cycrecon_x_a = self.recon_criterion(x_aba, x_a) if hyperparameters['recon_x_cyc_w'] > 0 else 0
         self.loss_gen_cycrecon_x_b = self.recon_criterion(x_bab, x_b) if hyperparameters['recon_x_cyc_w'] > 0 else 0
+        # Feature match loss
+        self.loss_feature_match_A = self.dis_a.calc_fm_loss(self.real_A, self.fake_A)
+        self.loss_feature_match_B = self.dis_b.calc_fm_loss(self.real_B, self.fake_B)
+        self.total_feature_loss = self.loss_feature_match_A + self.loss_feature_match_B
         # GAN loss
-        # prediction_a = self.dis_a(x_ba)
-        # self.loss_gen_adv_a = self.criterionGAN(prediction_a, True)
-        # prediction_b = self.dis_b(x_ab)
-        # self.loss_gen_adv_b = self.criterionGAN(prediction_b, True)
         self.loss_gen_adv_a = self.dis_a.calc_gen_loss(x_ba)
         self.loss_gen_adv_b = self.dis_b.calc_gen_loss(x_ab)
         # domain-invariant perceptual loss
@@ -109,7 +109,8 @@ class MUNIT_Trainer(nn.Module):
                               hyperparameters['recon_x_cyc_w'] * self.loss_gen_cycrecon_x_a + \
                               hyperparameters['recon_x_cyc_w'] * self.loss_gen_cycrecon_x_b + \
                               hyperparameters['vgg_w'] * self.loss_gen_vgg_a + \
-                              hyperparameters['vgg_w'] * self.loss_gen_vgg_b
+                              hyperparameters['vgg_w'] * self.loss_gen_vgg_b + \
+                              hyperparameters['fm_w'] * self.total_feature_loss
         self.loss_gen_total.backward()
         self.gen_opt.step()
 
