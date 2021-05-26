@@ -198,8 +198,6 @@ class DilatedDis(nn.Module):
         dilation *= 2
         self.dilate2 = nn.Conv2d(dim, dim, 3, padding=padding, dilation=dilation, bias=False)
         self.in2 = nn.InstanceNorm2d(dim), nn.ReLU(True)
-        padding *= 2
-        dilation *= 2
         self.last_x  = nn.Conv2d(dim * 2, 1, 1, 1, 0)
 
     def forward(self, x):
@@ -214,7 +212,8 @@ class DilatedDis(nn.Module):
         in1 = self.in1(dilate1)
         dilate2 = self.dilate2(in1)
         in2 = self.in2(dilate2)
-        return self.last_x(in2), [conv1, conv2, conv3, conv4, dilate1, dilate2]
+        output = torch.cat([conv4, in2], 1)
+        return self.last_x(output), [conv1, conv2, conv3, conv4, dilate1, dilate2]
 
 class MsImageDis(nn.Module):
     # Multi-scale discriminator architecture
