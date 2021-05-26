@@ -88,8 +88,8 @@ class MUNIT_Trainer(nn.Module):
         self.loss_gen_cycrecon_x_a = self.recon_criterion(x_aba, x_a) if hyperparameters['recon_x_cyc_w'] > 0 else 0
         self.loss_gen_cycrecon_x_b = self.recon_criterion(x_bab, x_b) if hyperparameters['recon_x_cyc_w'] > 0 else 0
         # Feature match loss
-        self.loss_feature_match_A = self.dis_a.calc_fm_loss(self.real_A, self.fake_A)
-        self.loss_feature_match_B = self.dis_b.calc_fm_loss(self.real_B, self.fake_B)
+        self.loss_feature_match_A = self.dis_a.calc_fm_loss(x_a, x_ba)
+        self.loss_feature_match_B = self.dis_b.calc_fm_loss(x_b, x_ab)
         self.total_feature_loss = self.loss_feature_match_A + self.loss_feature_match_B
         # GAN loss
         self.loss_gen_adv_a = self.dis_a.calc_gen_loss(x_ba)

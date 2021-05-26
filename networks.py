@@ -183,21 +183,23 @@ class DilatedDis(nn.Module):
         #     dilation *= 2
         # self.dilate_x = nn.Sequential(*self.dilate_x)
         self.conv1 = Conv2dBlock(self.input_dim, dim, 4, 2, 1, norm='none', activation=self.activ, pad_type=self.pad_type)
-        self.conv2 = Conv2dBlock(self.input_dim, dim, 4, 2, 1, norm='none', activation=self.activ, pad_type=self.pad_type)
+        self.conv2 = Conv2dBlock(dim, dim * 2, 4, 2, 1, norm=self.norm, activation=self.activ, pad_type=self.pad_type)
         dim *= 2
-        self.conv3 = Conv2dBlock(self.input_dim, dim, 4, 2, 1, norm='none', activation=self.activ,pad_type=self.pad_type)
+        self.conv3 = Conv2dBlock(dim, dim * 2, 4, 2, 1, norm=self.norm, activation=self.activ, pad_type=self.pad_type)
         dim *= 2
-        self.conv4 = Conv2dBlock(self.input_dim, dim, 4, 2, 1, norm='none', activation=self.activ,pad_type=self.pad_type)
+        self.conv4 = Conv2dBlock(dim, dim * 2, 4, 2, 1, norm=self.norm, activation=self.activ, pad_type=self.pad_type)
         dim *= 2
 
         dilation = 2
         padding = 2
         self.dilate1 = nn.Conv2d(dim, dim, 3, padding=padding, dilation=dilation, bias=False)
-        self.in1 = nn.InstanceNorm2d(dim), nn.ReLU(True)
+        self.in1 = nn.InstanceNorm2d(dim)
+        self.relu1 = nn.ReLU(True)
         padding *= 2
         dilation *= 2
         self.dilate2 = nn.Conv2d(dim, dim, 3, padding=padding, dilation=dilation, bias=False)
-        self.in2 = nn.InstanceNorm2d(dim), nn.ReLU(True)
+        self.in2 = nn.InstanceNorm2d(dim)
+        self.relu2 = nn.ReLU(True)
         self.last_x  = nn.Conv2d(dim * 2, 1, 1, 1, 0)
 
     def forward(self, x):
@@ -210,10 +212,13 @@ class DilatedDis(nn.Module):
         conv4 = self.conv4(conv3)
         dilate1 = self.dilate1(conv4)
         in1 = self.in1(dilate1)
-        dilate2 = self.dilate2(in1)
+        relu1 = self.relu1(in1)
+        dilate2 = self.dilate2(relu1)
         in2 = self.in2(dilate2)
-        output = torch.cat([conv4, in2], 1)
-        return self.last_x(output), [conv1, conv2, conv3, conv4, dilate1, dilate2]
+        relu2 = self.relu2(in2)
+        output = torch.cat([conv4, relu2], 1)
+        output = self.last_x(output)
+        return output, [conv1, conv2, conv3, conv4, relu1, relu2, output]
 
 class MsImageDis(nn.Module):
     # Multi-scale discriminator architecture
